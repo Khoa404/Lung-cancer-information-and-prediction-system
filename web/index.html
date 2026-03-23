@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Quản lý & Dự đoán Ung thư Phổi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.es2017.min.js"></script>
+    <style>
+        .hidden { display: none; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* Thanh cuộn cho lịch sử */
+        .history-container {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .history-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .history-container::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="h-full font-sans p-4" 
+      style="background-image: url('yte.png'); 
+             background-blend-mode: overlay;
+             background-size: cover; 
+             background-position: center; 
+             background-attachment: fixed;">
+
+    <div class="max-w-6xl mx-auto w-full">
+
+        <div id="login-view" class="bg-white/90 backdrop-blur-sm p-8 rounded-lg shadow-lg max-w-md mx-auto mt-10">
+            <h1 class="text-2xl font-bold text-center text-blue-800 mb-6">HỆ THỐNG DỰ ĐOÁN UNG THƯ PHỔI</h1>
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Mã đăng nhập</label>
+                    <input type="text" id="login-code" placeholder="Nhập mã 'admin' hoặc mã bệnh nhân (6 số)"
+                           class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                </div>
+                <button type="submit" class="w-full px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700">Đăng nhập</button>
+            </form>
+            <div class="mt-4 text-center">
+                <button id="btn-guest-login" class="text-sm text-gray-600 hover:text-blue-600 underline">Tiếp tục với tư cách Khách</button>
+            </div>
+            <p id="login-error" class="text-red-500 text-sm mt-2 text-center hidden"></p>
+        </div>
+
+        <div id="guest-view" class="hidden bg-white/90 backdrop-blur-sm p-6 rounded-lg shadow-lg max-w-md mx-auto">
+            <button class="btn-back text-blue-600 hover:underline mb-4 flex items-center">← Quay lại</button>
+            <h2 class="text-xl font-bold mb-4 text-center">Khách: Tải ảnh CT</h2>
+            
+            <form id="prediction-form" class="space-y-4">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                    <div id="image-preview" class="flex items-center justify-center bg-gray-50 text-gray-400 min-h-[200px] relative">
+                        Chưa có ảnh
+                    </div>
+                    
+                    <input id="image-file" type="file" class="hidden" accept="image/*">
+                    <label for="image-file" class="cursor-pointer mt-4 inline-block px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 font-bold">
+                        Chọn ảnh từ máy
+                    </label>
+                </div>
+                
+                <button type="submit" id="btn-predict" class="w-full py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 font-bold shadow">
+                    Chạy chẩn đoán (AI Browser)
+                </button>
+                <div id="prediction-status" class="text-center font-bold text-lg mt-2"></div>
+            </form>
+        </div>
+
+        <div id="admin-view" class="hidden space-y-6">
+            <div class="flex justify-between items-center bg-white/90 backdrop-blur-sm p-4 rounded-lg shadow">
+                <h2 class="text-xl font-bold text-blue-800">Danh sách Bệnh nhân</h2>
+                <div>
+                    <button id="btn-add-patient" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 mr-2">+ Thêm Bệnh nhân</button>
+                    <button class="btn-logout bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">Đăng xuất</button>
+                </div>
+            </div>
+
+            <div class="bg-white/90 backdrop-blur-sm rounded-lg shadow overflow-hidden">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mã BN</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Họ và Tên</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Năm sinh</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SĐT</th>
+                            <th class="px-6 py-3 text-right">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patient-list-body" class="bg-white divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="patient-detail-view" class="hidden bg-white/95 backdrop-blur-sm p-6 rounded-lg shadow-lg min-h-[80vh]">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <button id="btn-back-from-detail" class="text-blue-600 font-bold hover:underline flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd" /></svg>
+                    Quay lại
+                </button>
+                <h1 class="text-2xl font-bold text-gray-800">Hồ sơ Bệnh nhân</h1>
+                <button class="btn-logout bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600">Đăng xuất</button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                
+                <div class="md:col-span-1 space-y-4 border-r pr-6">
+                    <h3 class="text-lg font-bold text-blue-700 border-b pb-2">Thông tin cá nhân</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Mã Bệnh nhân</label>
+                            <input type="text" id="p-id" readonly class="w-full p-2 bg-gray-100 border rounded font-mono font-bold text-gray-700">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Họ và Tên</label>
+                            <input type="text" id="p-name" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-200">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Năm sinh</label>
+                            <input type="number" id="p-year" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-200">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-gray-500 uppercase">Số điện thoại (Nhận SMS)</label>
+                            <input type="tel" id="p-phone" class="w-full p-2 border rounded focus:ring-2 focus:ring-blue-200" placeholder="VD: +84...">
+                        </div>
+                        
+                        <div id="admin-actions" class="hidden pt-4 space-y-3 border-t">
+                            <button type="button" id="btn-save-info" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 font-bold shadow">
+                                Lưu thông tin cá nhân
+                            </button>
+                            
+                        <div class="bg-blue-50 p-3 rounded-lg border border-blue-200 mt-4">
+                            <p class="text-sm font-bold text-blue-800 mb-2">Thêm kết quả thủ công:</p>
+                            
+                            <label class="block text-xs text-gray-500 mb-1">Kết quả chẩn đoán:</label>
+                            <select id="admin-manual-result" class="block w-full text-sm border-gray-300 rounded mb-2 p-1.5 focus:ring-blue-500 border">
+                                <option value="ÂM TÍNH - Update by Admin">🟢 Âm tính (Bình thường)</option>
+                                <option value="DƯƠNG TÍNH - Update by Admin">🔴 Dương tính (Ung thư)</option>
+                            </select>
+
+                            <label class="block text-xs text-gray-500 mb-1">Hình ảnh X-quang/CT:</label>
+                            <input type="file" id="admin-upload-input" accept="image/*" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200 mb-2 bg-white rounded border">
+                            
+                            <button type="button" id="btn-admin-upload" class="w-full bg-indigo-600 text-white py-1.5 rounded hover:bg-indigo-700 text-sm font-bold transition shadow">
+                                Lưu vào Lịch sử
+                            </button>
+                        </div>
+
+                            <button type="button" id="btn-delete-patient" class="w-full bg-white border border-red-300 text-red-600 py-2 rounded hover:bg-red-50 text-sm font-bold mt-4">
+                                Xóa hồ sơ bệnh nhân
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h3 class="text-lg font-bold text-blue-700">Lịch sử Chẩn đoán</h3>
+                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">"Your Health, Our Mission."</span>
+                    </div>
+                    
+                    <div id="history-list" class="history-container space-y-4 pr-2">
+                        <p class="text-center text-gray-400 mt-10">Đang tải dữ liệu...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, getDoc, doc, setDoc, deleteDoc, updateDoc, addDoc, query, orderBy, serverTimestamp } 
+               from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // --- CẤU HÌNH FIREBASE ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyD-XzQWAFLBumFUUuuSoqKja434HaBeh4I",
+            authDomain: "da2-dudoanungthuphoi.firebaseapp.com",
+            projectId: "da2-dudoanungthuphoi",
+            storageBucket: "da2-dudoanungthuphoi.appspot.com",
+            messagingSenderId: "11980171033",
+            appId: "1:11980171033:web:4fdb868c617fb61e5f0788"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // Biến toàn cục
+        let currentUserRole = null;
+        let currentPatientId = null;
+
+        // --- 1. UI HELPERS ---
+        const views = {
+            login: 'login-view',
+            guest: 'guest-view',
+            admin: 'admin-view',
+            detail: 'patient-detail-view'
+        };
+
+        function showView(viewId) {
+            Object.values(views).forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById(views[viewId]).classList.remove('hidden');
+        }
+
+        // --- 2. TẠO THẺ LỊCH SỬ (Render Card) ---
+        function createHistoryCard(data, docId) {
+            const isCancer = (data.result === 'positive' || data.result === 'Ung thư' || (data.result && data.result.toLowerCase().includes('dương tính')));
+            const resultText = isCancer ? 'DƯƠNG TÍNH (Có dấu hiệu)' : (data.result === 'Draft' ? 'Đang chờ lưu...' : 'BÌNH THƯỜNG (Âm tính)');
+            const resultColor = data.result === 'Draft' ? 'text-gray-600' : (isCancer ? 'text-red-600' : 'text-green-600');
+            const borderColor = isCancer ? 'border-red-200 bg-red-50' : 'border-green-200 bg-white';
+            
+            // Lấy thời gian: Ưu tiên timestamp chuỗi từ server.py, nếu không có thì lấy created_at
+            let timeDisplay = data.timestamp || "Không rõ thời gian";
+
+            const div = document.createElement('div');
+            div.className = `${borderColor} border rounded-lg p-4 flex gap-4 shadow-sm relative transition hover:shadow-md`;
+            
+            div.innerHTML = `
+                <div class="w-32 h-32 flex-shrink-0 bg-gray-200 rounded-md overflow-hidden cursor-pointer border border-gray-300" onclick="window.open('${data.image_url}', '_blank')">
+                    <img src="${data.image_url}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/150?text=No+Image'">
+                </div>
+                <div class="flex-1 flex flex-col justify-center">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-xs font-bold text-gray-500 uppercase tracking-wider bg-white px-2 py-0.5 rounded border">Thời gian</span>
+                        <span class="text-sm font-mono font-bold text-blue-700">${timeDisplay}</span>
+                    </div>
+                    <h4 class="text-xl font-bold ${resultColor} mb-1">${resultText}</h4>
+                    <p class="text-xs text-gray-400">ID Kết quả: ${docId}</p>
+                </div>
+            `;
+
+            // Nút xóa cho Admin
+            if (currentUserRole === 'admin') {
+                const btnDel = document.createElement('button');
+                btnDel.className = "absolute top-3 right-3 text-gray-400 hover:text-red-600 hover:bg-red-50 p-1 rounded transition";
+                btnDel.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+                btnDel.onclick = async () => {
+                    if (confirm(`Bạn muốn xóa kết quả ngày ${timeDisplay}?`)) {
+                        await deleteDoc(doc(db, 'patients', currentPatientId, 'history', docId));
+                        loadHistoryList(currentPatientId); // Reload
+                    }
+                };
+                div.appendChild(btnDel);
+            }
+
+            return div;
+        }
+
+        // --- 3. LOGIC TẢI DỮ LIỆU ---
+        
+        // Tải danh sách lịch sử từ Firestore
+        async function loadHistoryList(patientId) {
+            const container = document.getElementById('history-list');
+            container.innerHTML = '<div class="text-center py-4"><div class="loader"></div><p class="text-sm text-gray-500 mt-2">Đang tải lịch sử...</p></div>';
+
+            try {
+                // Query vào sub-collection 'history', sắp xếp mới nhất lên đầu
+                const historyRef = collection(db, 'patients', patientId, 'history');
+                const q = query(historyRef, orderBy('created_at', 'desc'));
+                const snapshot = await getDocs(q);
+
+                container.innerHTML = ''; // Xóa loading
+
+                if (snapshot.empty) {
+                    container.innerHTML = `
+                        <div class="text-center py-10 bg-gray-50 rounded border border-dashed border-gray-300">
+                            <p class="text-gray-500 italic">Chưa có lịch sử chẩn đoán nào.</p>
+                            <p class="text-xs text-gray-400 mt-1">Kết quả từ máy chẩn đoán sẽ xuất hiện tại đây.</p>
+                        </div>`;
+                    return;
+                }
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const card = createHistoryCard(data, docSnap.id);
+                    container.appendChild(card);
+                });
+
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = `<p class="text-red-500 text-center">Lỗi tải dữ liệu: ${e.message}</p>`;
+            }
+        }
+
+        // Tải chi tiết bệnh nhân
+        async function loadPatientDetail(id, data, isAdmin) {
+            currentPatientId = id;
+
+            // Nếu chưa có data (do login trực tiếp), fetch lại
+            if (!data || !data.name) {
+                const snap = await getDoc(doc(db, 'patients', id));
+                if (snap.exists()) {
+                    data = snap.data();
+                } else {
+                    data = {};
+                }
+            }
+
+            // Fill Form
+            document.getElementById('p-id').value = id;
+            document.getElementById('p-name').value = data.name || '';
+            document.getElementById('p-year').value = data.year || '';
+            document.getElementById('p-phone').value = data.phone || '';
+
+            // Phân quyền Admin/User
+            const inputs = ['p-name', 'p-year', 'p-phone'];
+            const adminActions = document.getElementById('admin-actions');
+            
+            if (isAdmin) {
+                inputs.forEach(i => {
+                    const el = document.getElementById(i);
+                    el.removeAttribute('readonly');
+                    el.classList.remove('bg-gray-50');
+                });
+                adminActions.classList.remove('hidden');
+            } else {
+                inputs.forEach(i => {
+                    const el = document.getElementById(i);
+                    el.setAttribute('readonly', true);
+                    el.classList.add('bg-gray-50');
+                });
+                adminActions.classList.add('hidden');
+            }
+
+            showView('detail');
+            
+            // QUAN TRỌNG: Gọi hàm tải lịch sử
+            loadHistoryList(id);
+        }
+
+        // --- 4. XỬ LÝ SỰ KIỆN (ADMIN) ---
+
+        // Lưu thông tin cá nhân
+        document.getElementById('btn-save-info').addEventListener('click', async () => {
+            const info = {
+                name: document.getElementById('p-name').value,
+                year: document.getElementById('p-year').value,
+                phone: document.getElementById('p-phone').value
+            };
+            try {
+                await updateDoc(doc(db, 'patients', currentPatientId), info);
+                alert("Đã cập nhật thông tin thành công!");
+            } catch(e) {
+                alert("Lỗi: " + e.message);
+            }
+        });
+
+        // Admin xóa bệnh nhân
+        document.getElementById('btn-delete-patient').addEventListener('click', async () => {
+            if(confirm("CẢNH BÁO: Hành động này sẽ xóa toàn bộ hồ sơ và lịch sử của bệnh nhân này. Không thể khôi phục!")) {
+                await deleteDoc(doc(db, 'patients', currentPatientId));
+                alert("Đã xóa hồ sơ.");
+                showView('admin');
+                loadAdminView();
+            }
+        });
+
+
+        // --- ADMIN UPLOAD THỦ CÔNG (Đã cập nhật thêm note: 'Update by Admin') ---
+        const convertBase64 = (file) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+        });
+
+        document.getElementById('btn-admin-upload').addEventListener('click', async () => {
+            const fileInput = document.getElementById('admin-upload-input');
+            const resultSelect = document.getElementById('admin-manual-result'); 
+            const file = fileInput.files[0];
+
+            if (!file) { alert("Vui lòng chọn ảnh!"); return; }
+
+            try {
+                const base64 = await convertBase64(file);
+                // Lấy thời gian hiện tại
+                const now = new Date();
+                const timeStr = now.toLocaleString('vi-VN', { 
+                    day: '2-digit', month: '2-digit', year: 'numeric', 
+                    hour: '2-digit', minute: '2-digit', second: '2-digit' 
+                });
+
+                // Lấy kết quả từ menu Admin chọn
+                const selectedResult = resultSelect.value; 
+
+                // Lưu vào sub-collection history
+                await addDoc(collection(db, 'patients', currentPatientId, 'history'), {
+                    result: selectedResult,
+                    image_url: base64,
+                    timestamp: timeStr,
+                    created_at: serverTimestamp(),
+                    note: 'Update by Admin' // <--- THÊM DÒNG NÀY THEO YÊU CẦU
+                });
+
+                alert("Đã lưu kết quả mới (Update by Admin) vào lịch sử!");
+                fileInput.value = ''; 
+                loadHistoryList(currentPatientId); // Tải lại danh sách hiển thị
+            } catch (e) {
+                alert("Lỗi upload: " + e.message);
+                console.error(e);
+            }
+        });
+
+        // --- 5. LOGIC DANH SÁCH & LOGIN ---
+
+        async function loadAdminView() {
+            const tbody = document.getElementById('patient-list-body');
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center p-4">Đang tải...</td></tr>';
+            
+            const snap = await getDocs(collection(db, 'patients'));
+            tbody.innerHTML = '';
+            
+            snap.forEach(d => {
+                const data = d.data();
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-blue-50 cursor-pointer transition";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-mono font-bold text-blue-700">${d.id}</td>
+                    <td class="px-6 py-4 font-bold text-gray-700">${data.name || '---'}</td>
+                    <td class="px-6 py-4 text-gray-500">${data.year || '---'}</td>
+                    <td class="px-6 py-4 text-gray-500">${data.phone || '---'}</td>
+                    <td class="px-6 py-4 text-right">
+                        <button class="text-blue-600 hover:text-blue-800 font-bold btn-view">Xem Hồ sơ</button>
+                    </td>
+                `;
+                tr.onclick = () => loadPatientDetail(d.id, data, true);
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Login Handler
+        document.getElementById('login-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('login-code').value.trim();
+            if (code === 'admin') {
+                currentUserRole = 'admin';
+                loadAdminView();
+                showView('admin');
+            } else if (code.length >= 1) {
+                currentUserRole = 'patient';
+                loadPatientDetail(code, {}, false);
+                showView('detail');
+            }
+        };
+
+        // Navigation Handlers
+        document.getElementById('btn-guest-login').onclick = () => showView('guest');
+        document.querySelectorAll('.btn-back').forEach(b => b.onclick = () => showView('login'));
+        document.querySelectorAll('.btn-logout').forEach(b => b.onclick = () => {
+            currentUserRole = null;
+            showView('login');
+        });
+        document.getElementById('btn-back-from-detail').onclick = () => {
+            if (currentUserRole === 'admin') showView('admin');
+            else showView('login');
+        };
+        
+        // Add Patient
+        document.getElementById('btn-add-patient').onclick = async () => {
+            const id = prompt("Nhập mã bệnh nhân mới (6 số):");
+            if(id) {
+                await setDoc(doc(db, 'patients', id), { name: 'Mới', year: '', phone: '' });
+                loadAdminView();
+            }
+        };
+
+
+        // ==========================================
+        // LOGIC AI CHO CHẾ ĐỘ KHÁCH (CLIENT-SIDE)
+        // ==========================================
+
+        let selectedGuestFile = null;
+
+        // 1. Xử lý hiển thị ảnh xem trước (Preview & Canvas Wrapper)
+        const fileInput = document.getElementById('image-file');
+        const imagePreview = document.getElementById('image-preview');
+
+        fileInput.addEventListener('change', (event) => {
+            selectedGuestFile = event.target.files[0];
+            const statusMsg = document.getElementById('prediction-status');
+            statusMsg.textContent = ""; // Reset thông báo cũ
+
+            if (selectedGuestFile) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreview.innerHTML = ''; // Xóa nội dung cũ
+
+                    const img = new Image();
+                    img.id = 'preview-image-element';
+                    img.className = 'object-contain max-h-64 block'; 
+                    
+                    img.onload = () => {
+                        // Tạo Wrapper để Canvas đè chính xác lên ảnh
+                        const wrapper = document.createElement('div');
+                        wrapper.className = "relative inline-block"; 
+
+                        const canvas = document.createElement('canvas');
+                        canvas.id = 'preview-canvas';
+                        canvas.className = "absolute top-0 left-0 w-full h-full pointer-events-none";
+                        
+                        // Set kích thước canvas bằng ảnh thật
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                        
+                        wrapper.appendChild(img);
+                        wrapper.appendChild(canvas);
+                        imagePreview.appendChild(wrapper);
+                    };
+
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(selectedGuestFile);
+            }
+        });
+
+        // 2. Hàm vẽ khung chữ nhật (Bounding Box)
+        function drawBoundingBoxes(boxes) {
+            const canvas = document.getElementById('preview-canvas');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const modelInputSize = 640; // Kích thước input của model YOLO
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.font = "16px sans-serif";
+            ctx.textBaseline = "top";
+
+            boxes.forEach(prediction => {
+                const [x_min, y_min, x_max, y_max] = prediction.box;
+                
+                // Chuyển đổi tọa độ từ hệ quy chiếu 640x640 sang kích thước thật của ảnh
+                const x = (x_min / modelInputSize) * canvas.width;
+                const y = (y_min / modelInputSize) * canvas.height;
+                const width = ((x_max - x_min) / modelInputSize) * canvas.width;
+                const height = ((y_max - y_min) / modelInputSize) * canvas.height;
+
+                // Màu sắc: Ung thư (0) = Đỏ, Bình thường (1) = Xanh
+                const color = prediction.classId === 0 ? "#FF0000" : "#00FF00"; 
+                
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x, y, width, height);
+
+                // Vẽ nhãn text nền màu
+                const label = `${prediction.className} (${(prediction.score * 100).toFixed(0)}%)`;
+                const textWidth = ctx.measureText(label).width;
+                
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y - 25, textWidth + 10, 25);
+                ctx.fillStyle = "#ffffff";
+                ctx.fillText(label, x + 5, y - 20);
+            });
+        }
+
+        // 3. Hàm chạy Model AI (ĐÃ SỬA LỖI NMS)
+        async function runModelPrediction(imageElement) {
+            // Đường dẫn model
+            const MODEL_URL = './web_model/model.json';
+            const model = await tf.loadGraphModel(MODEL_URL);
+
+            // Tiền xử lý ảnh
+            const tensor = tf.browser.fromPixels(imageElement)
+                .resizeNearestNeighbor([640, 640])
+                .toFloat()
+                .div(tf.scalar(255.0))
+                .expandDims();
+
+            const results = await model.executeAsync(tensor);
+            
+            // Hậu xử lý (Post-processing)
+            const transposed = results.transpose([0, 2, 1]);
+            const data = await transposed.data();
+            
+            tf.dispose([tensor, results, transposed]); 
+
+            const boxes = [];
+            const CONF_THRESHOLD = 0.5; 
+
+            for (let i = 0; i < 8400; i++) {
+                const [cx, cy, w, h, score0, score1] = data.slice(i * 6, (i + 1) * 6);
+                const maxScore = Math.max(score0, score1);
+                const classId = score0 > score1 ? 0 : 1;
+
+                if (maxScore > CONF_THRESHOLD) {
+                    boxes.push({
+                        box: [cx - w/2, cy - h/2, cx + w/2, cy + h/2], 
+                        score: maxScore,
+                        classId: classId,
+                        className: classId === 0 ? "UNG THƯ" : "BÌNH THƯỜNG"
+                    });
+                }
+            }
+
+            // NMS (Non-Max Suppression)
+            if (boxes.length === 0) return [];
+            
+            const nmsIndices = await tf.image.nonMaxSuppressionAsync(
+                tf.tensor2d(boxes.map(b => b.box)),
+                tf.tensor1d(boxes.map(b => b.score)),
+                20, 
+                0.45, 
+                CONF_THRESHOLD
+            );
+            
+            const indices = await nmsIndices.data();
+            tf.dispose(nmsIndices);
+            
+            // --- SỬA LỖI TẠI ĐÂY ---
+            // Chuyển TypedArray sang Array thường trước khi map
+            return Array.from(indices).map(i => boxes[i]); 
+        }
+
+        // 4. Sự kiện nút "Chạy chẩn đoán"
+        document.getElementById('prediction-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusMsg = document.getElementById('prediction-status');
+            const imgEl = document.getElementById('preview-image-element');
+            const btn = document.getElementById('btn-predict');
+
+            if (!selectedGuestFile || !imgEl) {
+                alert("Vui lòng chọn ảnh trước!");
+                return;
+            }
+
+            try {
+                btn.disabled = true;
+                statusMsg.innerHTML = '<div class="loader"></div> Đang phân tích...';
+                statusMsg.className = "text-center text-blue-600 mt-2";
+                
+                // Xóa khung cũ
+                const ctx = document.getElementById('preview-canvas').getContext('2d');
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+                // Chạy AI
+                const predictions = await runModelPrediction(imgEl);
+                drawBoundingBoxes(predictions);
+
+                // Hiển thị kết luận
+                const hasCancer = predictions.some(p => p.classId === 0);
+                if (hasCancer) {
+                    statusMsg.textContent = "KẾT QUẢ: DƯƠNG TÍNH (Phát hiện dấu hiệu)";
+                    statusMsg.className = "text-center font-bold text-xl mt-2 text-red-600";
+                } else {
+                    statusMsg.textContent = "KẾT QUẢ: BÌNH THƯỜNG (Không phát hiện bất thường)";
+                    statusMsg.className = "text-center font-bold text-xl mt-2 text-green-600";
+                }
+
+            } catch (err) {
+                console.error(err);
+                statusMsg.textContent = "Lỗi: " + err.message;
+                statusMsg.className = "text-center text-red-500 font-bold";
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+    </script>
+</body>
+</html>
