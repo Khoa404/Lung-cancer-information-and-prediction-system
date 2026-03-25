@@ -44,22 +44,16 @@ This is a complete system ready for real-world operation. The system integrates:
 ```
 Lung-cancer-information-and-prediction-system/
 ├── hardware/
-│   ├── esp32_cam/           # Firmware code for ESP32-CAM
-│   ├── CameraWebServer/     # Web server on device
-│   └── MKE_M21_SIM768x_demo/# LTE Module demo
+│   ├── esp32.ino/           # code for ESP32
+│   └── circuit_diagram.jpg/    
 ├── processing_block/
 │   ├── server.py            # AI processing server
-│   ├── best_10k_n.pt        # YOLOv8 AI model
+│   ├── best_10k_n.pt        # YOLO AI model
 │   ├── CT_images/           # Input CT images
-│   └── results/             # Prediction results
-├── KhoiXuLy/                # Data processing block
-│   ├── server.py
-│   ├── firebase_key.json    # Firebase key
-│   
+│   └── results/             # Prediction results   
 ├── web/
 │   ├── index.html           # Web interface
 │   └── web_model/           # Web model
-├── datasheet/               # Technical documentation
 └── README.md               # This documentation
 ```
 
@@ -79,7 +73,7 @@ Lung-cancer-information-and-prediction-system/
 └────────────────────┬────────────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────────────┐
-│ 3. Preprocessing & AI Prediction (YOLOv8)                       │
+│ 3. Preprocessing & AI Prediction (YOLO)                       │
 │    (Processing Block - Python Server)                           │
 └────────────────────┬────────────────────────────────────────────┘
                      │
