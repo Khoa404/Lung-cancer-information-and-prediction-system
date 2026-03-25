@@ -31,7 +31,7 @@ This is a complete system ready for real-world operation. The system integrates:
 | Component | Technology | Notes |
 |-----------|-----------|--------|
 | **Processing Block** | C++, Python | Image processing and AI |
-| **AI Model** | YOLOv8 (Object Detection) | Cancer cell detection |
+| **AI Model** | YOLO (Object Detection) | Cancer cell detection |
 | **Database** | Firebase Realtime DB | Patient data storage |
 | **Frontend** | HTML, CSS, JavaScript | Web interface |
 | **Hardware** | LCD, Keypad, LEDs | Display and control |
