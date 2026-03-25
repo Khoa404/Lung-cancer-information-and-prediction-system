@@ -9,7 +9,7 @@ This is a complete system ready for real-world operation. The system integrates:
 
 - ** Hardware**: Devices that interact directly with users to collect medical data
 - ** Processing Block**: Data processing and management system (C++, Python)
-- ** AI Model**: YOLOv8 model to predict lung cancer signs (Precision: 98.4%, Recall: 98.4%)
+- ** AI Model**: YOLO model to predict lung cancer signs (Precision: 98.4%, Recall: 98.4%)
 - ** Firebase**: Secure cloud database for storing patient information
 - ** Web Interface**: Professional web interface for doctors and patients
 
